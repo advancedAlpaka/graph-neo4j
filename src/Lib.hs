@@ -1,18 +1,18 @@
 module Lib
   ( addReaction,
     getReaction,
-  )
+  findShortestPath)
 where
 
-import Control.Monad.Except (MonadError (..), liftIO)
+import Control.Monad.Except (MonadError (..))
 import Control.Monad.State (execState, forM_, modify)
 import Data.Maybe (fromMaybe)
 import Data.Set (fromList)
 import Data.Text (Text)
 import Database.Bolt hiding ((=:))
 import Database.Bolt.Extras (NodeLike (..), URelationLike (..))
-import Database.Bolt.Extras.DSL (Selector (..), formQuery, matchF, returnF)
-import Database.Bolt.Extras.DSL.Typed (lbl, prop, (!-:), (-:), (.&), (=:))
+import Database.Bolt.Extras.DSL (Selector (..), formQuery, matchF, returnF, textF)
+import Database.Bolt.Extras.DSL.Typed (lbl, prop, (!-:), (-:), (.&), (=:), p)
 import Database.Bolt.Extras.Graph qualified as G
 import Types.Catalyst qualified as C (Catalyst (..))
 import Types.Molecule qualified as M (Molecule (..))
@@ -63,7 +63,7 @@ getReaction db recid = runE db $ do
     extr :: (RecordValue a) => (a -> b) -> Record -> Text -> BoltActionT IO b
     extr toB record key = do
       ans <- record `at` key
-      liftIO $ print ans
+      --liftIO $ print ans
       case exactEither ans of
         Left ue -> throwError $ WrongMessageFormat ue
         Right a -> return $ toB a
@@ -127,3 +127,18 @@ getReaction db id = runE db $ do
   let resInfo :: PRODUCT_FROM = extractRelation "reactInfo" "molRes" res
   return $ RD.ReactionDetail reactInfo (r1Info, molIn1) (r2Info, molIn2) (catInfo, cat) (resInfo, molRes)
   -}
+
+findShortestPath :: Pipe -> Int -> Int -> IO (Either BoltError (Maybe Path))
+findShortestPath db idFrom idTo = runE db $ do
+  resQuery <- query text
+  case resQuery of
+    [] -> return Nothing
+    (r : _) -> r `maybeAt` "path"
+ where
+  text = formQuery $ do
+    matchF
+      [ PS $ p $ #from .& lbl @M.Molecule .& prop (#id =: idFrom)
+      , PS $ p $ #to .& lbl @M.Molecule .& prop (#id =: idTo)
+      ]
+    textF ", path = shortestPath((from)-[*]->(to))"
+    returnF ["path"]
