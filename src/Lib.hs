@@ -1,8 +1,9 @@
-module Lib
-  ( addReaction,
-    getReaction,
-  findShortestPath)
-where
+module Lib (
+  addReaction,
+  getReaction,
+  findShortestPath,
+  ReactPaths,
+) where
 
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.State (execState, forM_, modify)
@@ -12,13 +13,14 @@ import Data.Text (Text)
 import Database.Bolt hiding ((=:))
 import Database.Bolt.Extras (NodeLike (..), URelationLike (..))
 import Database.Bolt.Extras.DSL (Selector (..), formQuery, matchF, returnF, textF)
-import Database.Bolt.Extras.DSL.Typed (lbl, prop, (!-:), (-:), (.&), (=:), p)
+import Database.Bolt.Extras.DSL.Typed (lbl, p, prop, (!-:), (-:), (.&), (=:))
 import Database.Bolt.Extras.Graph qualified as G
 import Types.Catalyst qualified as C (Catalyst (..))
 import Types.Molecule qualified as M (Molecule (..))
 import Types.Reaction qualified as R (Reaction (..))
 import Types.ReactionDetail qualified as RD (ReactionDetail (..))
-import Types.Relationships (ACCELERATE, PRODUCT_FROM, REAGENT_IN)
+import Types.Relationships (ACCELERATE, REAGENT_IN, PRODUCT_FROM)
+import Control.Exception.Base (Exception, SomeException (..))
 
 addReactionRequest :: RD.ReactionDetail -> G.GraphPutRequest
 addReactionRequest (RD.ReactionDetail info rs (catRel, cat) prs) =
@@ -56,30 +58,30 @@ getReaction db recid = runE db $ do
   rsInfo :: [REAGENT_IN] <- extr (map $ fromURelation . toU) res "reactiveInfos"
   resInfo :: [PRODUCT_FROM] <- extr (map $ fromURelation . toU) res "productInfos"
   return $ RD.ReactionDetail reactInfo (fromList $ zip rsInfo molIns) (catInfo, cat) (fromList $ zip resInfo molPrs)
-  where
-    toU :: Relationship -> URelationship
-    toU Relationship {relIdentity = _relIdentity, startNodeId = _startNodeId, endNodeId = _endNodeId, relType = _relType, relProps = _relProps} =
-      URelationship {urelIdentity = _relIdentity, urelType = _relType, urelProps = _relProps}
-    extr :: (RecordValue a) => (a -> b) -> Record -> Text -> BoltActionT IO b
-    extr toB record key = do
-      ans <- record `at` key
-      --liftIO $ print ans
-      case exactEither ans of
-        Left ue -> throwError $ WrongMessageFormat ue
-        Right a -> return $ toB a
-    text = formQuery $ do
-      matchF
-        [ PS $ #cat .& lbl @C.Catalyst -: #catInfo .& lbl @ACCELERATE !-: #react .& lbl @R.Reaction .& prop (#id =: recid)
-        ]
-      returnF
-        [ "react AS reactInfo",
-          "catInfo AS catalystInfo",
-          "cat AS catalyst",
-          "[(react)-[prInfo:PRODUCT_FROM]-(pr:Molecule) | prInfo] AS productInfos",
-          "[(react)-[prInfo:PRODUCT_FROM]-(pr:Molecule) | pr] AS products",
-          "[(r:Molecule)-[rInfo:REAGENT_IN]-(react) | rInfo] AS reactiveInfos",
-          "[(r:Molecule)-[rInfo:REAGENT_IN]-(react) | r] AS reactives"
-        ]
+ where
+  toU :: Relationship -> URelationship
+  toU Relationship{relIdentity = _relIdentity, startNodeId = _startNodeId, endNodeId = _endNodeId, relType = _relType, relProps = _relProps} =
+    URelationship{urelIdentity = _relIdentity, urelType = _relType, urelProps = _relProps}
+  extr :: (RecordValue a) => (a -> b) -> Record -> Text -> BoltActionT IO b
+  extr toB record key = do
+    ans <- record `at` key
+    -- liftIO $ print ans
+    case exactEither ans of
+      Left ue -> throwError $ WrongMessageFormat ue
+      Right a -> return $ toB a
+  text = formQuery $ do
+    matchF
+      [ PS $ #cat .& lbl @C.Catalyst -: #catInfo .& lbl @ACCELERATE !-: #react .& lbl @R.Reaction .& prop (#id =: recid)
+      ]
+    returnF
+      [ "react AS reactInfo"
+      , "catInfo AS catalystInfo"
+      , "cat AS catalyst"
+      , "[(react)-[prInfo:PRODUCT_FROM]-(pr:Molecule) | prInfo] AS productInfos"
+      , "[(react)-[prInfo:PRODUCT_FROM]-(pr:Molecule) | pr] AS products"
+      , "[(r:Molecule)-[rInfo:REAGENT_IN]-(react) | rInfo] AS reactiveInfos"
+      , "[(r:Molecule)-[rInfo:REAGENT_IN]-(react) | r] AS reactives"
+      ]
 
 {- Graph API Version
 getReactionRequest :: Int -> GraphGetRequest
@@ -128,13 +130,29 @@ getReaction db id = runE db $ do
   return $ RD.ReactionDetail reactInfo (r1Info, molIn1) (r2Info, molIn2) (catInfo, cat) (resInfo, molRes)
   -}
 
-findShortestPath :: Pipe -> Int -> Int -> IO (Either BoltError (Maybe Path))
+type ReactPaths = ([(M.Molecule, REAGENT_IN, R.Reaction, PRODUCT_FROM)], M.Molecule)
+
+data E = E Text deriving (Show, Exception)
+
+findShortestPath :: Pipe -> Int -> Int -> IO (Either BoltError (Maybe ReactPaths))
 findShortestPath db idFrom idTo = runE db $ do
   resQuery <- query text
   case resQuery of
     [] -> return Nothing
-    (r : _) -> r `maybeAt` "path"
+    (r : _) -> do
+      Path{pathNodes = nodes, pathRelationships = rels, pathSequence = _} :: Path <- r `at` "path"
+      let (fstNodes, maybeLast) = groupWith nodes $ (\n1 n2 -> (fromNode n1 :: M.Molecule, fromNode n2 :: R.Reaction))
+      case maybeLast of
+        Nothing -> throwError $ NonHasboltError $ SomeException $ E "Strange path"
+        Just lst -> do 
+          let (fstRels, _) = groupWith rels $ (\n1 n2 -> (fromURelation n1 :: REAGENT_IN, fromURelation n2 :: PRODUCT_FROM))
+          return $ Just ((zipWith (\(mol,react) (reagent,prod) -> (mol, reagent, react, prod)) fstNodes fstRels), fromNode lst :: M.Molecule)
  where
+  groupWith :: [a] -> (a -> a -> b) -> ([b], Maybe a)
+  groupWith [] _ = ([], Nothing)
+  groupWith [x] _ = ([], Just x)
+  groupWith (a : b : xs) f = let (list, m) = groupWith xs f in 
+    (f a b : list, m)
   text = formQuery $ do
     matchF
       [ PS $ p $ #from .& lbl @M.Molecule .& prop (#id =: idFrom)

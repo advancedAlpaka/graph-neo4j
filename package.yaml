@@ -71,3 +71,5 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - graph-neo4j
+    - data-default
+    - random
