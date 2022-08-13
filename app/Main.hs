@@ -78,7 +78,7 @@ reactionsD =
   ids :: [[Int]]
   ids = chunksOf 4 ((take 80 . unfoldr (Just . uniformR (0, 39))) $ mkStdGen 15645)
 
--- Data.List.find (\t ->  and $ fmap (\l -> size (fromList l) == 4) $ chunksOf 4 $ Prelude.take 80 . unfoldr (Just . uniformR (0 :: Int, 19)) $ mkStdGen t) [-1000..1000]
+-- Data.List.find (\t -> and $ fmap (\l -> size (fromList l) == 4) $ chunksOf 4 $ Prelude.take 80 . unfoldr (Just . uniformR (0 :: Int, 19)) $ mkStdGen t) [-1000..1000]
 
 noCatalyst :: (ACCELERATE, C.Catalyst)
 noCatalyst = (ACCELERATE 1.0 1.0, C.Catalyst 0 "" Nothing)

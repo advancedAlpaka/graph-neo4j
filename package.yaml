@@ -1,6 +1,6 @@
 name:                graph-neo4j
 version:             0.1.0.0
-github:              "victor1234544/graph-neo4j"
+github:              "advancedAlpaka/graph-neo4j"
 license:             BSD3
 author:              "Advanced Alpaka"
 maintainer:          "advancedAlpaka@protonmail.com"
