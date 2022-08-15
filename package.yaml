@@ -23,6 +23,9 @@ dependencies:
 - base >= 4.7 && < 5
 - hasbolt
 - hasbolt-extras
+- lens
+- containers
+- text
 
 default-extensions:
 - StrictData
