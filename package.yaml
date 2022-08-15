@@ -1,0 +1,69 @@
+name:                graph-neo4j
+version:             0.1.0.0
+github:              "victor1234544/graph-neo4j"
+license:             BSD3
+author:              "Advanced Alpaka"
+maintainer:          "advancedAlpaka@protonmail.com"
+copyright:           "2022 Advanced Alpaka"
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/graph-neo4j#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- hasbolt
+- hasbolt-extras
+
+default-extensions:
+- StrictData
+- DuplicateRecordFields
+- OverloadedRecordDot
+- OverloadedStrings
+- OverloadedLabels
+- DeriveAnyClass
+- DerivingStrategies
+- DerivingVia
+- DeriveGeneric
+- LambdaCase
+- MultiWayIf
+- ViewPatterns
+- PatternSynonyms
+- ImpredicativeTypes
+- TypeFamilies
+- DataKinds
+- GADTs
+- FunctionalDependencies
+- UndecidableInstances
+- DefaultSignatures
+- NoCUSKs
+- NoNamedWildCards
+- ImportQualifiedPost
+
+language: GHC2021
+
+library:
+  source-dirs: src
+  ghc-options:
+    - -Wall
+
+executables:
+  graph-neo4j-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -Wall
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - graph-neo4j
